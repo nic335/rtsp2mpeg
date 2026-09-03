@@ -15,9 +15,12 @@
   button { cursor: pointer; }
   button.primary { background: #2f6feb; border-color: #2f6feb; }
   button.danger { border-color: #5c2b2b; color: #ff9c9c; }
+  button.on { border-color: #2f6feb; color: #9dc1ff; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
   .card { background: #161b22; border: 1px solid #232a33; border-radius: 10px; overflow: hidden; }
-  .card img { width: 100%; display: block; background: #000; aspect-ratio: 16/9; object-fit: contain; }
+  .view { position: relative; background: #000; aspect-ratio: 16/9; }
+  .view img { width: 100%; height: 100%; display: block; object-fit: contain; }
+  .view .placeholder { position: absolute; inset: 0; display: grid; place-items: center; color: #8b96a5; font-size: 13px; }
   .card .meta { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
   .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   .name { font-weight: 600; }
@@ -44,48 +47,142 @@
     <button class="primary" type="submit">Add stream</button>
   </form>
   <div class="grid" id="grid"></div>
+  <p class="muted" id="hint"></p>
 </main>
 <script>
+// Tiles preview by polling snapshot.jpg; a tile switches to a persistent MJPEG
+// connection only when put in live mode. Browsers allow ~6 connections per host,
+// and an MJPEG response never ends, so at most MAX_LIVE tiles may be live at once.
+const MAX_LIVE = 3;
+const SNAPSHOT_INTERVAL = 1000;
+
 const grid = document.getElementById('grid');
+const hint = document.getElementById('hint');
 const api = (p, o) => fetch(p, o).then(r => r.ok ? (r.status === 204 ? null : r.json()) : r.text().then(t => Promise.reject(new Error(t))));
 
-function card(s) {
+const tiles = new Map();  // id -> { el, refs, stream, live, timer }
+
+function liveCount() {
+  let n = 0;
+  for (const t of tiles.values()) if (t.live) n++;
+  return n;
+}
+
+function build(id) {
   const el = document.createElement('div');
   el.className = 'card';
-  el.dataset.id = s.id;
-  const st = s.status || {};
   el.innerHTML = `
-    ${s.enabled ? `<img alt="${s.name}" src="${s.mjpeg_url}?t=${Date.now()}" />`
-                : `<div class="muted" style="padding:60px 12px;text-align:center">disabled</div>`}
+    <div class="view"><img alt="" /><div class="placeholder">connecting…</div></div>
     <div class="meta">
       <div class="row">
-        <span class="name"><span class="dot ${st.error ? 'err' : st.live ? 'live' : ''}"></span> ${s.name}</span>
+        <span class="name"><span class="dot"></span> <span class="label"></span></span>
         <span>
-          <button data-act="toggle">${s.enabled ? 'Disable' : 'Enable'}</button>
+          <button data-act="live">Live</button>
+          <button data-act="toggle"></button>
           <button class="danger" data-act="delete">Delete</button>
         </span>
       </div>
-      <div class="muted">${s.url}</div>
-      <div class="muted"><a href="${s.mjpeg_url}">MJPEG</a> · <a href="${s.snapshot_url}">snapshot</a> · ${s.width}px ${s.fps}fps · ${st.clients || 0} client(s)</div>
-      ${st.error ? `<div class="err">${st.error}</div>` : ''}
+      <div class="muted src"></div>
+      <div class="muted links"></div>
+      <div class="err"></div>
     </div>`;
-  el.querySelector('[data-act="toggle"]').onclick = () =>
-    api(`/api/streams/${s.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ enabled: !s.enabled }) }).then(load);
-  el.querySelector('[data-act="delete"]').onclick = () =>
-    confirm(`Delete ${s.name}?`) && api(`/api/streams/${s.id}`, { method: 'DELETE' }).then(load);
-  return el;
+  const refs = {
+    img: el.querySelector('img'),
+    placeholder: el.querySelector('.placeholder'),
+    dot: el.querySelector('.dot'),
+    label: el.querySelector('.label'),
+    src: el.querySelector('.src'),
+    links: el.querySelector('.links'),
+    err: el.querySelector('.err'),
+    live: el.querySelector('[data-act="live"]'),
+    toggle: el.querySelector('[data-act="toggle"]'),
+    del: el.querySelector('[data-act="delete"]'),
+  };
+  const tile = { el, refs, stream: null, live: false, timer: null };
+  refs.live.onclick = () => setLive(tile, !tile.live);
+  refs.toggle.onclick = async () => {
+    setLive(tile, false);
+    await api(`/api/streams/${id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ enabled: !tile.stream.enabled }) });
+    load();
+  };
+  refs.del.onclick = async () => {
+    if (!confirm(`Delete ${tile.stream.name}?`)) return;
+    setLive(tile, false);
+    await api(`/api/streams/${id}`, { method: 'DELETE' });
+    load();
+  };
+  tiles.set(id, tile);
+  return tile;
 }
 
-let signature = '';
+function stopPreview(tile) {
+  clearTimeout(tile.timer);
+  tile.timer = null;
+  tile.refs.img.removeAttribute('src');
+}
+
+function pollSnapshot(tile) {
+  const s = tile.stream;
+  if (!s || !s.enabled || tile.live) return;
+  const img = tile.refs.img;
+  img.onload = img.onerror = () => {
+    tile.timer = setTimeout(() => pollSnapshot(tile), SNAPSHOT_INTERVAL);
+  };
+  img.src = `${s.snapshot_url}?t=${Date.now()}`;
+}
+
+function setLive(tile, live) {
+  if (live && !tile.live && liveCount() >= MAX_LIVE) {
+    hint.textContent = `Only ${MAX_LIVE} tiles can be live at once (browser connection limit) — other tiles refresh once a second.`;
+    return;
+  }
+  tile.live = live;
+  tile.refs.live.classList.toggle('on', live);
+  tile.refs.live.textContent = live ? 'Stop live' : 'Live';
+  stopPreview(tile);
+  if (!tile.stream || !tile.stream.enabled) return;
+  if (live) tile.refs.img.src = `${tile.stream.mjpeg_url}?t=${Date.now()}`;
+  else pollSnapshot(tile);
+}
+
+function render(tile, s) {
+  const prev = tile.stream;
+  tile.stream = s;
+  const st = s.status || {};
+  const r = tile.refs;
+  r.label.textContent = s.name;
+  r.dot.className = `dot ${st.error ? 'err' : st.live ? 'live' : ''}`;
+  r.src.textContent = s.url;
+  r.links.innerHTML = `<a href="${s.mjpeg_url}" target="_blank" rel="noopener">MJPEG</a> · <a href="${s.snapshot_url}" target="_blank" rel="noopener">snapshot</a> · ${s.width}px ${s.fps}fps · ${st.clients || 0} client(s)`;
+  r.err.textContent = st.error || '';
+  r.toggle.textContent = s.enabled ? 'Disable' : 'Enable';
+  r.live.disabled = !s.enabled;
+  r.placeholder.textContent = s.enabled ? (st.error ? 'no signal' : 'connecting…') : 'disabled';
+  r.placeholder.style.display = r.img.getAttribute('src') && !st.error ? 'none' : 'grid';
+
+  const restart = !prev || prev.enabled !== s.enabled || prev.snapshot_url !== s.snapshot_url;
+  if (restart) {
+    stopPreview(tile);
+    if (s.enabled) tile.live ? setLive(tile, true) : pollSnapshot(tile);
+  }
+}
+
 async function load() {
   const streams = await api('/api/streams');
-  const sig = JSON.stringify(streams.map(s => [s.id, s.enabled, s.name, s.url, s.width, s.fps, s.status.error, s.status.live, s.status.clients]));
-  if (sig === signature) return;
-  signature = sig;
-  const scroll = window.scrollY;
-  grid.replaceChildren(...streams.map(card));
-  if (!streams.length) grid.innerHTML = '<p class="muted">No streams yet — add an RTSP URL above.</p>';
-  window.scrollTo(0, scroll);
+  const seen = new Set();
+  for (const s of streams) {
+    seen.add(s.id);
+    const tile = tiles.get(s.id) || build(s.id);
+    if (!tile.el.isConnected) grid.append(tile.el);
+    render(tile, s);
+  }
+  for (const [id, tile] of tiles) {
+    if (seen.has(id)) continue;
+    stopPreview(tile);
+    tile.el.remove();
+    tiles.delete(id);
+  }
+  hint.textContent = streams.length ? '' : 'No streams yet — add an RTSP URL above.';
 }
 
 document.getElementById('add').onsubmit = async (e) => {
@@ -99,7 +196,6 @@ document.getElementById('add').onsubmit = async (e) => {
     await api('/api/streams', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
     e.target.reset();
     e.target.width.value = 640; e.target.fps.value = 10; e.target.quality.value = 5;
-    signature = '';
     load();
   } catch (err) { alert(err.message); }
 };

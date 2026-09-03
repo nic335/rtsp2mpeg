@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 
 from .config import Stream
@@ -13,19 +14,21 @@ SOI = b"\xff\xd8"
 EOI = b"\xff\xd9"
 IDLE_TIMEOUT = 15.0
 RESTART_DELAY = 2.0
+MAX_RESTART_DELAY = 30.0
 READ_CHUNK = 65536
+FFMPEG = os.environ.get("FFMPEG", "ffmpeg")
 
 
 def ffmpeg_command(stream: Stream) -> list[str]:
     return [
-        "ffmpeg",
+        FFMPEG,
         "-hide_banner",
         "-loglevel", "error",
         "-nostdin",
         "-rtsp_transport", stream.transport,
         "-fflags", "nobuffer",
         "-flags", "low_delay",
-        "-i", stream.url,
+        "-i", stream.resolved_url,
         "-an",
         "-vf", f"fps={stream.fps},scale={stream.width}:-2",
         "-q:v", str(stream.quality),
@@ -133,12 +136,15 @@ class StreamWorker:
             sub.push(frame)
 
     async def _run(self) -> None:
+        delay = RESTART_DELAY
         try:
             while True:
+                frames_before = self.frames_served
                 await self._run_ffmpeg_once()
                 if self._idle():
                     return
-                await asyncio.sleep(RESTART_DELAY)
+                delay = RESTART_DELAY if self.frames_served > frames_before else min(delay * 2, MAX_RESTART_DELAY)
+                await asyncio.sleep(delay)
         except asyncio.CancelledError:
             await self._terminate()
             raise
@@ -157,11 +163,19 @@ class StreamWorker:
 
     async def _run_ffmpeg_once(self) -> None:
         log.info("starting ffmpeg for %s (%s)", self.stream.id, self.stream.redacted_url)
-        proc = await asyncio.create_subprocess_exec(
-            *ffmpeg_command(self.stream),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *ffmpeg_command(self.stream),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        except FileNotFoundError:
+            self.error = (
+                f"'{FFMPEG}' not found — install ffmpeg and put it on PATH, "
+                "or set the FFMPEG environment variable to its full path"
+            )
+            log.error("%s: %s", self.stream.id, self.error)
+            return
         self._process = proc
         try:
             await self._pump_frames(proc)

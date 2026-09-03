@@ -16,7 +16,10 @@ restarts automatically if the camera drops.
 ## Requirements
 
 - Python 3.10+
-- `ffmpeg` on `PATH`
+- `ffmpeg` on `PATH`, or `FFMPEG` set to the ffmpeg executable
+
+On Windows: `winget install Gyan.FFmpeg`, then open a new terminal so `PATH`
+picks it up (`ffmpeg -version` should work).
 
 ## Run
 
@@ -50,8 +53,24 @@ overridable with `RTSP_HUB_CONFIG`).
 `quality` is ffmpeg's `-q:v` (2 = best, 31 = worst). `transport` is `tcp` or `udp`.
 Credentials in RTSP URLs are redacted in the API, UI and logs.
 
+URLs may reference environment variables (`$VAR` / `${VAR}`) so passwords stay out
+of the config file:
+
+```bash
+cp examples/streams.8cam.json ~/.config/rtsp-hub/streams.json
+RTSP_PASSWORD='your-password' python -m rtsp_hub
+```
+
+`examples/streams.8cam.json` is an 8-channel NVR (`ch0/1` … `ch7/1`) — edit the
+host and channel paths to match yours.
+
 ## Notes
 
 MJPEG is used because it plays in any browser with no plugin and no client-side
 player, at the cost of bandwidth. The app has no authentication — put it behind
 a reverse proxy or a trusted network.
+
+An MJPEG response never ends, and browsers allow only ~6 connections per host, so
+the dashboard previews tiles by polling `snapshot.jpg` once a second and opens a
+real MJPEG connection only for tiles you put in **Live** mode (max 3 at a time).
+Any tile's `mjpeg` URL can still be embedded directly elsewhere.

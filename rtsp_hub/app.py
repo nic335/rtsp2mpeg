@@ -117,7 +117,7 @@ async def delete_stream(stream_id: str) -> Response:
 async def snapshot(stream_id: str) -> Response:
     stream = _require(stream_id, must_be_enabled=True)
     worker = pool.get(stream)
-    frame = await worker.snapshot()
+    frame = await worker.snapshot(timeout=8.0)
     if frame is None:
         raise HTTPException(504, worker.error or "no frame received from source")
     return Response(frame, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
@@ -130,12 +130,17 @@ async def mjpeg(stream_id: str, request: Request) -> StreamingResponse:
     sub = worker.subscribe()
 
     async def frames():
+        stalled = 0.0
         try:
             while not await request.is_disconnected():
                 try:
-                    frame = await sub.get(timeout=30.0)
+                    frame = await sub.get(timeout=1.0)
                 except asyncio.TimeoutError:
-                    break
+                    stalled += 1.0
+                    if stalled >= 30.0:
+                        break
+                    continue
+                stalled = 0.0
                 yield (
                     f"--{BOUNDARY}\r\nContent-Type: image/jpeg\r\n"
                     f"Content-Length: {len(frame)}\r\n\r\n"
