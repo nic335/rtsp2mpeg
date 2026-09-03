@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>rtsp-hub</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; font: 14px/1.4 system-ui, sans-serif; background: #111418; color: #e7ebf0; }
+  header { padding: 16px 20px; border-bottom: 1px solid #232a33; display: flex; gap: 16px; align-items: center; }
+  h1 { font-size: 18px; margin: 0; }
+  main { padding: 20px; }
+  form.add { display: grid; grid-template-columns: 1fr 2fr repeat(3, 90px) auto; gap: 8px; margin-bottom: 20px; }
+  input, select, button { background: #1a1f26; color: inherit; border: 1px solid #2c333d; border-radius: 6px; padding: 7px 9px; }
+  button { cursor: pointer; }
+  button.primary { background: #2f6feb; border-color: #2f6feb; }
+  button.danger { border-color: #5c2b2b; color: #ff9c9c; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+  .card { background: #161b22; border: 1px solid #232a33; border-radius: 10px; overflow: hidden; }
+  .card img { width: 100%; display: block; background: #000; aspect-ratio: 16/9; object-fit: contain; }
+  .card .meta { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+  .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .name { font-weight: 600; }
+  .muted { color: #8b96a5; font-size: 12px; word-break: break-all; }
+  a { color: #6ea8ff; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: #6b7480; }
+  .dot.live { background: #3fb950; }
+  .dot.err { background: #f85149; }
+  .err { color: #ff9c9c; font-size: 12px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<header>
+  <h1>rtsp-hub</h1>
+  <span class="muted">each selected RTSP source, served as its own HTTP MJPEG URL</span>
+</header>
+<main>
+  <form class="add" id="add">
+    <input name="name" placeholder="Name (e.g. Front door)" required />
+    <input name="url" placeholder="rtsp://user:pass@host:554/stream" required />
+    <input name="width" type="number" value="640" min="64" max="3840" title="width (px)" />
+    <input name="fps" type="number" value="10" min="1" max="60" title="fps" />
+    <input name="quality" type="number" value="5" min="2" max="31" title="JPEG quality (2 best)" />
+    <button class="primary" type="submit">Add stream</button>
+  </form>
+  <div class="grid" id="grid"></div>
+</main>
+<script>
+const grid = document.getElementById('grid');
+const api = (p, o) => fetch(p, o).then(r => r.ok ? (r.status === 204 ? null : r.json()) : r.text().then(t => Promise.reject(new Error(t))));
+
+function card(s) {
+  const el = document.createElement('div');
+  el.className = 'card';
+  el.dataset.id = s.id;
+  const st = s.status || {};
+  el.innerHTML = `
+    ${s.enabled ? `<img alt="${s.name}" src="${s.mjpeg_url}?t=${Date.now()}" />`
+                : `<div class="muted" style="padding:60px 12px;text-align:center">disabled</div>`}
+    <div class="meta">
+      <div class="row">
+        <span class="name"><span class="dot ${st.error ? 'err' : st.live ? 'live' : ''}"></span> ${s.name}</span>
+        <span>
+          <button data-act="toggle">${s.enabled ? 'Disable' : 'Enable'}</button>
+          <button class="danger" data-act="delete">Delete</button>
+        </span>
+      </div>
+      <div class="muted">${s.url}</div>
+      <div class="muted"><a href="${s.mjpeg_url}">MJPEG</a> · <a href="${s.snapshot_url}">snapshot</a> · ${s.width}px ${s.fps}fps · ${st.clients || 0} client(s)</div>
+      ${st.error ? `<div class="err">${st.error}</div>` : ''}
+    </div>`;
+  el.querySelector('[data-act="toggle"]').onclick = () =>
+    api(`/api/streams/${s.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ enabled: !s.enabled }) }).then(load);
+  el.querySelector('[data-act="delete"]').onclick = () =>
+    confirm(`Delete ${s.name}?`) && api(`/api/streams/${s.id}`, { method: 'DELETE' }).then(load);
+  return el;
+}
+
+let signature = '';
+async function load() {
+  const streams = await api('/api/streams');
+  const sig = JSON.stringify(streams.map(s => [s.id, s.enabled, s.name, s.url, s.width, s.fps, s.status.error, s.status.live, s.status.clients]));
+  if (sig === signature) return;
+  signature = sig;
+  const scroll = window.scrollY;
+  grid.replaceChildren(...streams.map(card));
+  if (!streams.length) grid.innerHTML = '<p class="muted">No streams yet — add an RTSP URL above.</p>';
+  window.scrollTo(0, scroll);
+}
+
+document.getElementById('add').onsubmit = async (e) => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const body = {
+    name: f.get('name'), url: f.get('url'),
+    width: +f.get('width'), fps: +f.get('fps'), quality: +f.get('quality'),
+  };
+  try {
+    await api('/api/streams', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    e.target.reset();
+    e.target.width.value = 640; e.target.fps.value = 10; e.target.quality.value = 5;
+    signature = '';
+    load();
+  } catch (err) { alert(err.message); }
+};
+
+load();
+setInterval(load, 4000);
+</script>
+</body>
+</html>
