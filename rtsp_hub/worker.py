@@ -25,7 +25,7 @@ def ffmpeg_command(stream: Stream) -> list[str]:
         "-rtsp_transport", stream.transport,
         "-fflags", "nobuffer",
         "-flags", "low_delay",
-        "-i", stream.url,
+        "-i", stream.resolved_url,
         "-an",
         "-vf", f"fps={stream.fps},scale={stream.width}:-2",
         "-q:v", str(stream.quality),

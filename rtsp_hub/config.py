@@ -33,6 +33,11 @@ class Stream:
     transport: str = "tcp"
 
     @property
+    def resolved_url(self) -> str:
+        """URL with ``$VAR``/``${VAR}`` expanded from the environment."""
+        return os.path.expandvars(self.url)
+
+    @property
     def redacted_url(self) -> str:
         return re.sub(r"//[^/@]+@", "//***@", self.url)
 

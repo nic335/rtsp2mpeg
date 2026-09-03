@@ -1,0 +1,84 @@
+{
+  "streams": [
+    {
+      "id": "cam-0",
+      "name": "Camera 0",
+      "url": "rtsp://admin:${RTSP_PASSWORD}@192.168.11.221:554/ch0/1",
+      "enabled": true,
+      "width": 640,
+      "fps": 10,
+      "quality": 5,
+      "transport": "tcp"
+    },
+    {
+      "id": "cam-1",
+      "name": "Camera 1",
+      "url": "rtsp://admin:${RTSP_PASSWORD}@192.168.11.221:554/ch1/1",
+      "enabled": true,
+      "width": 640,
+      "fps": 10,
+      "quality": 5,
+      "transport": "tcp"
+    },
+    {
+      "id": "cam-2",
+      "name": "Camera 2",
+      "url": "rtsp://admin:${RTSP_PASSWORD}@192.168.11.221:554/ch2/1",
+      "enabled": true,
+      "width": 640,
+      "fps": 10,
+      "quality": 5,
+      "transport": "tcp"
+    },
+    {
+      "id": "cam-3",
+      "name": "Camera 3",
+      "url": "rtsp://admin:${RTSP_PASSWORD}@192.168.11.221:554/ch3/1",
+      "enabled": true,
+      "width": 640,
+      "fps": 10,
+      "quality": 5,
+      "transport": "tcp"
+    },
+    {
+      "id": "cam-4",
+      "name": "Camera 4",
+      "url": "rtsp://admin:${RTSP_PASSWORD}@192.168.11.221:554/ch4/1",
+      "enabled": true,
+      "width": 640,
+      "fps": 10,
+      "quality": 5,
+      "transport": "tcp"
+    },
+    {
+      "id": "cam-5",
+      "name": "Camera 5",
+      "url": "rtsp://admin:${RTSP_PASSWORD}@192.168.11.221:554/ch5/1",
+      "enabled": true,
+      "width": 640,
+      "fps": 10,
+      "quality": 5,
+      "transport": "tcp"
+    },
+    {
+      "id": "cam-6",
+      "name": "Camera 6",
+      "url": "rtsp://admin:${RTSP_PASSWORD}@192.168.11.221:554/ch6/1",
+      "enabled": true,
+      "width": 640,
+      "fps": 10,
+      "quality": 5,
+      "transport": "tcp"
+    },
+    {
+      "id": "cam-7",
+      "name": "Camera 7",
+      "url": "rtsp://admin:${RTSP_PASSWORD}@192.168.11.221:554/ch7/1",
+      "enabled": true,
+      "width": 640,
+      "fps": 10,
+      "quality": 5,
+      "transport": "tcp"
+    }
+  ]
+}

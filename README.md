@@ -50,6 +50,17 @@ overridable with `RTSP_HUB_CONFIG`).
 `quality` is ffmpeg's `-q:v` (2 = best, 31 = worst). `transport` is `tcp` or `udp`.
 Credentials in RTSP URLs are redacted in the API, UI and logs.
 
+URLs may reference environment variables (`$VAR` / `${VAR}`) so passwords stay out
+of the config file:
+
+```bash
+cp examples/streams.8cam.json ~/.config/rtsp-hub/streams.json
+RTSP_PASSWORD='your-password' python -m rtsp_hub
+```
+
+`examples/streams.8cam.json` is an 8-channel NVR (`ch0/1` … `ch7/1`) — edit the
+host and channel paths to match yours.
+
 ## Notes
 
 MJPEG is used because it plays in any browser with no plugin and no client-side
