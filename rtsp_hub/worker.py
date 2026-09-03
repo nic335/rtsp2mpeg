@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 
 from .config import Stream
@@ -15,11 +16,12 @@ IDLE_TIMEOUT = 15.0
 RESTART_DELAY = 2.0
 MAX_RESTART_DELAY = 30.0
 READ_CHUNK = 65536
+FFMPEG = os.environ.get("FFMPEG", "ffmpeg")
 
 
 def ffmpeg_command(stream: Stream) -> list[str]:
     return [
-        "ffmpeg",
+        FFMPEG,
         "-hide_banner",
         "-loglevel", "error",
         "-nostdin",
@@ -161,11 +163,19 @@ class StreamWorker:
 
     async def _run_ffmpeg_once(self) -> None:
         log.info("starting ffmpeg for %s (%s)", self.stream.id, self.stream.redacted_url)
-        proc = await asyncio.create_subprocess_exec(
-            *ffmpeg_command(self.stream),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *ffmpeg_command(self.stream),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        except FileNotFoundError:
+            self.error = (
+                f"'{FFMPEG}' not found — install ffmpeg and put it on PATH, "
+                "or set the FFMPEG environment variable to its full path"
+            )
+            log.error("%s: %s", self.stream.id, self.error)
+            return
         self._process = proc
         try:
             await self._pump_frames(proc)

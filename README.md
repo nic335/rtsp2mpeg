@@ -16,7 +16,10 @@ restarts automatically if the camera drops.
 ## Requirements
 
 - Python 3.10+
-- `ffmpeg` on `PATH`
+- `ffmpeg` on `PATH`, or `FFMPEG` set to the ffmpeg executable
+
+On Windows: `winget install Gyan.FFmpeg`, then open a new terminal so `PATH`
+picks it up (`ffmpeg -version` should work).
 
 ## Run
 
