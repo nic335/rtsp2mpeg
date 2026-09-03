@@ -13,6 +13,7 @@ SOI = b"\xff\xd8"
 EOI = b"\xff\xd9"
 IDLE_TIMEOUT = 15.0
 RESTART_DELAY = 2.0
+MAX_RESTART_DELAY = 30.0
 READ_CHUNK = 65536
 
 
@@ -133,12 +134,15 @@ class StreamWorker:
             sub.push(frame)
 
     async def _run(self) -> None:
+        delay = RESTART_DELAY
         try:
             while True:
+                frames_before = self.frames_served
                 await self._run_ffmpeg_once()
                 if self._idle():
                     return
-                await asyncio.sleep(RESTART_DELAY)
+                delay = RESTART_DELAY if self.frames_served > frames_before else min(delay * 2, MAX_RESTART_DELAY)
+                await asyncio.sleep(delay)
         except asyncio.CancelledError:
             await self._terminate()
             raise

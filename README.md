@@ -66,3 +66,8 @@ host and channel paths to match yours.
 MJPEG is used because it plays in any browser with no plugin and no client-side
 player, at the cost of bandwidth. The app has no authentication — put it behind
 a reverse proxy or a trusted network.
+
+An MJPEG response never ends, and browsers allow only ~6 connections per host, so
+the dashboard previews tiles by polling `snapshot.jpg` once a second and opens a
+real MJPEG connection only for tiles you put in **Live** mode (max 3 at a time).
+Any tile's `mjpeg` URL can still be embedded directly elsewhere.
